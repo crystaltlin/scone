@@ -59,7 +59,8 @@
 ;;; area of planning, this would be augmented with a lot of additional
 ;;; episodic knowledge that is domain-specific.
 
-;;; Roots of the episodic system: actions, events, time.
+;;; ----------------------------------------------------------------------
+;;; Roots of the episodic system: actions, events, activities, etc.
 
 ;;; Event
 (setq *event*

@@ -1,90 +1,119 @@
 Release Notes for the Scone Knowledge-Base System
 Author: Scott E. Fahlman <sef@cs.cmu.edu>
 ===========================================================================
-User-visible changes from 0.8.22 to 1.0.0:
+User-visible changes since v1.0.0:
 ===========================================================================
-This (1.0.0) is the first version released to external users via
-GitHub.  Older versions are still available, but will be migrated to
-an archive subdirectory, and eventually to cold storage.
+Eliminated all the "simple" prefixes in the core-components files,
+and updated the core.lisp file to load the new names.  Some of these
+files are indeed very minimal, but I don't want to be thinking about
+how complex they have to be before we drop the "simple".  If some
+files ultimately have a simple "core" version and a more complex
+version for some class of applications, we can worry about appropriate
+naming then.
 
-The Scone User's Guide (SUG) is now (I believe) up to date for 1.0.0.
-Thanks go to Amos Ng and Natassia Kornilova for spotting
-discrepancies. Even though I preach about keeping documentation up to
-date at all times, the SUG fell behind during the extremely
-high-pressure period in which changes were driven by the IARPA
-Metaphor program.  Now that this project is just a bad memory, I hope
-and expect that we will keep the SUG up to date for each tagged
-release.
+Moved some upper-ontology stuff (e.g. the definition of {event}) from
+episodic.lisp to upper-lisp, since other things will need to see these
+elements.
 
-There may still be some discrapncies between the SUG and the code that
-we didn't catch.  Please report any that you find.  
+Began consolidating some of Laleh's KB stuff from the
+vehicle-maintenance domain into a new directory that is not (for now)
+part of "core".  Began consolidating episodic stuff from Laleh and
+Maria into episodic.lisp, and began adding some of my own
+augmentations.
 
-I've removed the "Crib Sheet" section from the SUG.  It was
-occasionally useful, but was a very big pain to keep up to date by
-hand.  There are various automated tools that may do this job, and in
-the meantime it's pretty easy to go to the alphabetical index or table
-of contents to find whatever you're looking for.
+Remove *kb-logging-stream* and the functionality that supports it.
+This continuous-logging facility was added during the RADAR project on
+the theory that it made a continuously-learning system more robust
+than occasional checkpointing.  But to the best of my knowledge it has
+never been used, and keeping it all consistent has been a big extra
+drag on engine development.
 
-I have also moved to automatic generation of the aplphabetical index
-via Word.  Unfortunately, while word has a nice facility for
-generating indices of various kinds, based on tags you place in the
-text, the index contains only page numbers and not hyperlinks back to
-the indexed item or items.  This is an inexplicable omission in an
-increasingly online world.  Apparently Adobe InDesign does produce
-these hyperlinks, so I may be moving the SUG to InDesign in the
-not-too-distant future.
+Modified IS-X-A-Y? and IS-X-EQ-Y? to return the proper second values,
+as documented in the Scone User's Guide.  That is, if the answer is
+:NO due to a violated split or an explicit NOT-EQ link, return that
+split or link as the second value.  This is the item you should cancel
+if you want to force the answer to be :YES.
 
-The old LOOKUP-ELEMENT-PREDICATE has been renamed LOOKUP-ELEMENT.  The
-old LOOKUP-ELEMENT has been renamed LOOKUP-ELEMENT-OR-DEFER.  That is,
-(LOOKUP-ELEMENT {FOO}) will now return NIL if {FOO} has not yet been
-defined as an element.  This is in preparation for removing the defer
-machinery altogether.  It is a kludge and is currently only used in
-the "bootstrap" KB file.
+NOTE: There's a known bug here.  It appears that NOT-EQ links are not placing
+negation markers correctly.  This will be fixed soon.  I think that
+IS-NOT-A negation is now working as intended.
+=======================================
+June 27, 2017
 
-Eliminated the :HINTS argument from DISAMBIGUATE and the various
-LOOKUP-ELEMENT functions.  This was just a place-holder until we would
-work on real disambiguation.
+Some old changes from late 2016, not committed until now:
 
-Fixed a bug found by Anastassia: several of the "x-inverse-of-y"
-functions were not actually finding the inverse but rather the forward
-version -- a cut-and-paste error, now fixed.
+Small update to add :SPLIT argument to INCOMING-WIRES.
 
-Some new control variables in the code were not documented in the SUG:
-*CHECK-DEFINED-TYPES*, *CREATE-UNDEFINED-ELEMENTS*,
-*DEDUCE-OWNER-FROM-TYPE-ROLE*, and *COMMENT-ON-INFERRED-KB-CHANGES*.
-This omission has been fixed.
+Change to add optional MARK-LINK arg to CROSS-REL, MARK-REL-INTERNAL,
+MARK-REL-DESCRIPTION.
+---------------------------------
+New changes:
 
-Every call to COMMENTARY now puts the comment string on a line of its
-own, so the caller doesn't need to do that unless extra spacing is
-desired.  This was inconsistent before.
+MARK-REL and MARK-REL-INVERSE (and the things that call them,
+including the SHOW and LIST versions and STATEMENT-TRUE?) have now
+been modified to handle transitive relations/statements properly.
 
-Modify IN-CONTEXT so that it does nothing if the requested context is
-already the *CONTEXT*.  We still need additional work to make it more
-efficient to change contexts frequently.
+The changes were mostly in the MARK-REL-INTERNAL function.  This now
+follows chains of transitive statements and also handles transitive
+statements inherited from above, within the limits set by the
+RECURSION-ALLOWANCE arg.  So if, in a {family}, the mother is older
+than any child, then this will be inherited by the mother and children
+in any specific family, and that can be part of an older-than chain.
 
-The SUG description of NEW-INDV-ROLE and NEW-TYPE-ROLE was incorrect
-and inconsistent.  In one place there was some text describing a planned
-update that got sidetracked; in another place, the text was correct
-but out of date for some arguments.  I have updated the SUG to
-describe the current state of the code, but the quantification
-machinery for these functions is messed up and will soon be replaced.
+I'm pushing this out now as the "development" version because one
+group of students needs this capability ASAP for a project they are
+working on.  But this facility needs some further testing and the
+documents need to be updated.
 
-Most element-creating functions have a keyword arg :META, which is not
-really used anywhere.  This was a quick-and-dirty kludge for attaching
-things like probabilities and provenance to statements and
-world-models -- needed briefly for one past project and never really
-implemented right.  We will need this capability eventually, but will
-do it in a more thoughtful way.  For now I've ripped that stuff out.
+There is one known (but minor) bug in the way that forward and inverse
+English names are assigned. Also, transitivity is not yet implemented
+for roles, just for Scone relations/statements.
 
-Went through the KB files in the release and made the header
-information consistent.
+Also, there probably are more efficient ways to implement this if
+that ever becomes a priority. (It will be a priority for the
+transitive is-part-of relation, but in the near future that will
+become a built-in link type with its own machinery, as we have done
+with is-a links.
+==========================================
+June 29, 2017
 
-Split *comment-on-inferred-kb-changes* into
-*comment-on-element-creation* and *comment-on-defined-types*.  The
-former is T by default.  It can be verbose, but catches lots of typos
-and false assumptions about what is already in the KB.  The latter is
-NIL by default.  It can be useful for debugging mysterious additions,
-but can be annoyingly verbose when loading files that are known to be
-correct.
+Made a change in NEW-INDV and NEW-TYPE, requested by Daniel Gross, to
+check whether an element with a give iname actually exists before
+comparing to *undefined-thing*.  This was not a problem in SBCL, but
+tripped up in LispWorks.
+
+Changed all instances in the engine of :UTF8 to :UTF-8, which is
+apparently the form that most CL implmenetations recognize.
+
+===========================================
+July 1, 2017
+
+Added MARK-SPLIT-VIOLATIONS to check whether an existing or proposed
+split S has violations under it in the current context -- that is,
+some element S is under more than one of the branches of the split S.
+If so, mark them and return the count.
+
+Also, MARK-ALL-SPLIT-VIOLATIONS calls MARK-SPLIT-VIOLATIONS on every
+split present in the current context, testing them all for violations.
+
+Modified NEW-SPLIT and NEW-COMPLETE-SPLIT to use these if necessary.
+
+Added LIST and SHOW versions of the two MARK-functions above.
+
+There are various ways in which these functions could be speeded up.
+However, we normally check for split violations incrementally, when
+new is-a links are added to the network. The problem arises when we
+already have populated the various type-nodes being split with
+subtypes and instances and then add the split later -- then we need to
+check if this is OK.
+
+Note that this does not come up in the common Scone idiom of using
+NEW-SPLIT-SUBTYPES to create new types and a split, all in the same
+operation. We need this now because some programs that convert
+existing KBs into Scone, for example from OWL, scrmable up the order
+in which things are done.
+
+============================================
+
 
 
