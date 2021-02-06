@@ -1,0 +1,102 @@
+
+- kitchen tools
+    - kitchen utensil
+        - spatula
+        - brush
+        - egg beater
+        - tong
+        - can opener
+        - grater
+    - kitchen appliances
+        - microwave
+        - oven
+        - fryer
+        - rice cooker
+        - toaster
+        - blender
+        - food processor
+        - coffee appliances
+            - coffee grinder
+            - espresso machine
+            - coffee maker
+    - eating utensil
+        - spoon
+        - fork
+        - chopsticks
+    - cutlery
+        - cutting board
+        - knife
+        - knife sharpener
+        - shears
+    - measuring utensil
+        - measuring cup
+        - measuring spoon
+        - scale
+    - cookware
+        - pot
+        - pan
+        - wok
+        - skillet
+        - dutch oven
+    - bakeware
+        - tart pan
+        - pie pan
+        - cake pan
+        - cupcake pan
+        - loaf pan
+        - sheet pan
+    - dinnerware
+        - plate
+        - bowl
+        - cup
+
+- food
+    - vegetables
+        - leafy greens
+        - root vegetable
+        - allium
+        - Cruciferous
+        - Marrow
+        - stem
+        - bean/pea
+    - fruit
+        - melon
+        - citrus
+        - berries
+        - stone fruit
+        - apple/pear
+        - tropical and exotic
+        - tomato/avocado
+    - meat
+        - beef
+        - pork
+        - chicken
+        - mixed
+        - processed
+    - dairy food
+        - cheese
+        - milk
+        - yogurt
+        - butter
+    - seafood
+        - fish
+    - tuber
+    - grain
+    - bean
+    - nut and seed
+    - fungi
+
+- diet
+    - paleo
+    - vegan
+    - vegetarian
+    - kosher
+    - mediteranean
+    - gluten-free
+    - nut-free
+
+    by nutrition
+    - protein
+    - carbonhydrates
+    - fats
+    - vitamin??
