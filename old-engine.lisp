@@ -4,7 +4,7 @@
 ;;;
 ;;; Author & Maintainer: Scott E. Fahlman
 ;;; ***************************************************************************
-;;; Copyright (C) 2003-2021, Carnegie Mellon University.
+;;; Copyright (C) 2003-2017, Carnegie Mellon University.
 ;;;
 ;;; The Scone software is made available to the public under the
 ;;; Apache 2.0 open source license.  A copy of this license is
@@ -147,7 +147,7 @@
 ;;; NOTE: Customize this for your own site.
 (defvar *default-kb-pathname*
   (pathname "/afs/cs.cmu.edu/project/scone/current/kb/anonymous")
-  "Default location for text-format KB files.") 
+  "Default location for text-format KB files.")
 
 (defvar *load-kb-stream* nil
   "Stream used for loading the current KB file.")
@@ -671,7 +671,7 @@
    If there are not enough markers available to fill all the MARKER-VARS,
    we don't allocate any new markers.  Instead we executre the FAIL-FORM
    and return what it returns."
-  (let ((n-markers-needed (length (the list marker-vars)))
+  (let ((n-markers-needed (length marker-vars))
 	(bind-list nil)
 	(free-list)
 	(declare-list))
@@ -790,9 +790,6 @@
 ;;; the start and end of the chain here, along with the count of marked
 ;;; elements.
 
-;;; The operations beyond this point must be as fast as possible.
-(declaim (optimize (speed 3) (space 0) (safety 0)))
-
 (defvar *first-marked-element*
   (make-array n-markers :initial-element nil)
   "A vector with an entry for each marker.  This is the first element in
@@ -860,264 +857,6 @@
 	 (svref (next-marked-element ,var) ,m)))
        ((null ,var))
      ,@body))
-
-(declaim (inline fast-mark))
-
-(defun fast-mark (e m)
-  (declare (fixnum m))
-  "Mark element E with marker M.  Do not check arguments."
-  (let ((bit (marker-bit m)))
-    (declare (fixnum bit))
-    ;; If element E is already marked with marker M, do nothing.
-    (when (= 0 (logand bit (bits e)))
-      (if (null (svref *first-marked-element* m))
-	  ;; This is the first element to get marker M, so record E as the
-	  ;; first marked element.
-	  (setf (svref *first-marked-element* m) e)
-	  ;; There arlready are other elements with M, so add E to the chain.
-	  (setf (svref (next-marked-element (svref *last-marked-element* m)) m) e))
-      ;; Adjust forward and back pointers in E.
-      (setf (svref (next-marked-element e) m) nil)
-      (setf (svref (prev-marked-element e) m)
-	    (svref *last-marked-element* m))
-      ;; E is now the last marked element.
-      (setf (svref *last-marked-element* m) e)
-      ;; Turn on the marker bit in E.
-      (setf (bits e)
-	    (logior (bits e) bit))
-      ;; Update the count of elements marked with M.
-      (inc-marker-count m))))
-
-(declaim (inline fast-unmark))
-
-(defun fast-unmark (e m)
-  (declare (fixnum m))
-  "Remove marker M from element E.  Do not check arguments."
-  (let ((bit (marker-bit m)))
-    (declare (fixnum bit))
-    ;; If element E is not marked with marker M, do nothing.
-    (unless (= 0 (logand bit (bits e)))
-      ;; Remember the elements before and after E in marker M's chain.
-      (let ((prev (svref (prev-marked-element e) m))
-            (next (svref (next-marked-element e) m)))
-        ;; Clear the chain entries from E.
-        (setf (svref (prev-marked-element e) m) nil)
-        (setf (svref (next-marked-element e) m) nil)
-        (if (null prev)
-            ;; Element E was the first element in M's chain.
-            ;; Make E's successor first.
-            (setf (svref *first-marked-element* m) next)
-            ;; Else, update next-pointer in previous element.
-            (setf (svref (next-marked-element prev) m) next))
-        (if (null next)
-            ;; Element E was the last element in M's chain.
-            ;; Make E's predecessor the last.
-            (setf (svref *last-marked-element* m) prev)
-            ;; Else, update the prev-pointer in the next element.
-            (setf (svref (prev-marked-element next) m) prev))
-        ;; Turn off the marker bit in E.
-        (setf (bits e)
-              (logand (bits e) (lognot bit)))
-        ;; Update the count of elements marked with M.
-        (dec-marker-count m)))))
-
-(declaim (inline faster-mark))
-
-(defun faster-mark (e m)
-  (declare (fixnum m))
-  "Just like FAST-MARK, but we use this when we're sure that E does not already
-   hold marker M and that there is at least one element already marked with M.
-   This is a common situation and saves a few cycles."
-  ;; Add E to the end of the chain.
-  (setf (svref (next-marked-element (svref *last-marked-element* m)) m) e)
-  ;; Adjust forward and back pointers in E.
-  (setf (svref (next-marked-element e) m) nil)
-  (setf (svref (prev-marked-element e) m)
-        (svref *last-marked-element* m))
-  ;; E is now the last marked element.
-  (setf (svref *last-marked-element* m) e)
-  ;; Turn on the marker bit in E.
-  (setf (bits e)
-        (logior (bits e) (marker-bit m)))
-  ;; Update the count of elements marked with M.
-  (inc-marker-count m))
-
-(declaim (inline faster-unmark))
-
-(defun faster-unmark (e m)
-  (declare (fixnum m))
-  "This is like FAST-UNMARK, but it is used in situations where you are
-   sure that element E has mark M.  Saves a few cycles."
-  (let ((bit (marker-bit m)))
-    (declare (fixnum bit))
-    ;; Remember the elements before and after E in marker M's chain.
-    (let ((prev (svref (prev-marked-element e) m))
-          (next (svref (next-marked-element e) m)))
-      ;; Clear the chain entries from E.
-      (setf (svref (prev-marked-element e) m) nil)
-      (setf (svref (next-marked-element e) m) nil)
-      (if (null prev)
-          ;; Element E was the first element in M's chain.
-          ;; Make E's successor first.
-          (setf (svref *first-marked-element* m) next)
-          ;; Else, update next-pointer in previous element.
-          (setf (svref (next-marked-element prev) m) next))
-      (if (null next)
-          ;; Element E was the last element in M's chain.
-          ;; Make E's predecessor the last.
-          (setf (svref *last-marked-element* m) prev)
-          ;; Else, update the prev-pointer in the next element.
-          (setf (svref (prev-marked-element next) m) prev))
-      ;; Turn off the marker bit in E.
-      (setf (bits e)
-            (logand (bits e) (lognot bit)))
-      ;; Update the count of elements marked with M.
-      (dec-marker-count m))))
-
-(declaim (inline convert-marker))
-
-(defun convert-marker (m1 m2)
-  "For every element marked with M1, mark it with M2 (if it was not marked
-   with M2 already) and clear M1 from E.  This could be done with
-   MARK-BOOLEAN, but this specialized version is faster."
-  (declare (fixnum m1 m2))
-  (let* ((bit1 (marker-bit m1))
-	 (bit2 (marker-bit m2))
-	 (mask1 (lognot bit1))
-	 (bits 0)
-	 (last-m2 (svref *last-marked-element* m2))
-	 (next nil))
-    (declare (fixnum bit1 bit2 mask1 bits))
-    ;; For each element E in the chain for marker M1...
-    (do ((e (svref *first-marked-element* m1) next))
-	((null e))
-      (setq bits (bits e))
-      ;; Mark E with M2, unless it is already marked with M2.
-      (when (= 0 (logand bit2 bits))
-	(if last-m2
-	    ;; There are already elements marked with M2, add E to the
-	    ;; chain.
-	    (setf (svref (next-marked-element last-m2) m2) e)
-	    ;; This is the first element marked with M2.
-	    (setf (svref *first-marked-element* m2) e))
-	;; Adjust the back-pointer in E.
-	(setf (svref (prev-marked-element e) m2) last-m2)
-	;; Turn on the M2 marker bit in E.
-	(setq bits (logior bits bit2))
-	;; Update the count of elements marked with M.
-	(inc-marker-count m2)
-	;; E is now the last element in the m2 chain.
-	(setq last-m2 e))
-      ;; Remove the M1 links from E, but remember the next element.
-      (setq next (svref (next-marked-element e) m1))
-      (setf (svref (next-marked-element e) m1) nil)
-      (setf (svref (prev-marked-element e) m1) nil)
-      ;; Update the marker bits of E.
-      (setf (bits e) (logand bits mask1)))
-    ;; No elements are now marked with M1.
-    (zero-marker-count m1)
-    (setf (svref *first-marked-element* m1) nil)
-    (setf (svref *last-marked-element* m1) nil)
-    ;; Record the last element marked with M2.
-    (setf (svref *last-marked-element* m2) last-m2)
-    (fast-marker-count m2)))
-
-(declaim (inline clear-marker))
-
-(defun clear-marker (m)
-  "Clear marker M from all elements."
-  (declare (fixnum m))
-  (check-legal-marker m)
-  (let ((mask (lognot (marker-bit m))))
-    (declare (fixnum mask))
-    (do ((e (svref *first-marked-element* m)))
-	((null e) nil)
-      ;; For each element E in the chain for marker M...
-      (let ((next (svref (next-marked-element e) m)))
-	;; Unlink from the chain.
-	(setf (svref (next-marked-element e) m) nil)
-	(setf (svref (prev-marked-element e) m) nil)
-	;; Clear the marker bit.
-	(setf (bits e) (logand (bits e) mask))
-	(setf e next))))
-  ;; Zero the count and set first and last elements to NIL.
-  (zero-marker-count m)
-  (setf (svref *first-marked-element* m) nil)
-  (setf (svref *last-marked-element* m) nil))
-
-(defun clear-marker-pair (m)
-  "Clear marker M and the associated cancel marker, but do not free it."
-  (declare (fixnum m))
-  (check-legal-marker-pair m)
-  (clear-marker m)
-  (clear-marker (get-cancel-marker m)))
-
-(defun clear-all-markers ()
-  "Clear and free all markers from all elements in the KB."
-  (do ((i 0 (1+ i)))
-      ((>= i n-markers))
-    (declare (fixnum i))
-    (clear-marker i)
-    (free-markers)))
-
-(defun make-mask (markers)
-  "Takes a list of markers.
-   Returns the corresponding mask (a fixnum)."
-  (let ((mask 0))
-    (declare (fixnum mask))
-    (dolist (m markers)
-      (declare (fixnum m))
-      (check-legal-marker m)
-      (setq mask (logior mask (marker-bit m))))
-    mask))
-
-(defun make-cancel-mask (markers)
-  "Takes a list of markers.  Returns the mask corresponding to
-   the cacnel marker for each marker in the list."
-  (let ((mask 0))
-    (declare (fixnum mask))
-    (dolist (m markers)
-      (declare (fixnum m))
-      (check-legal-marker m)
-      (setq mask (logior mask (marker-bit (get-cancel-marker m)))))
-    mask))
-
-;;; ========================================================================
-(subsection "User-Level Marker Operations")
-
-;;; The following marker operations may be called directly by users,
-;;; so they check their arguments for safety.
-
-(defun mark (e m)
-  "User-level MARK function."
-  (check-legal-marker m)
-  (setq e (lookup-element-test e))
-  (fast-mark e m))
-
-(defun unmark (e m)
-  "User-level UNMARK function."
-  (check-legal-marker m)
-  (setq e (lookup-element-test e))
-  (fast-unmark e m))
-
-(defun marker-count (m)
-  (check-legal-marker m)
-  (fast-marker-count m))
-
-(defun marker-on? (e m)
-  "User-level function to determine whether element E has marker M
-   turned on."
-  (check-legal-marker m)
-  (setq e (lookup-element-test e))
-  (fast-marker-on? e m))
-
-(defun marker-off? (e m)
-  "User-level function to determine whether element E has marker M
-   turned off."
-  (check-legal-marker m)
-  (setq e (lookup-element-test e))
-  (fast-marker-off? e m))
-
 
 ;;; ========================================================================
 (subsection "Definitions Related to Flag Bits")
@@ -3747,6 +3486,265 @@
 ;;; These operations must be as fast as possible.
 (declaim (optimize (speed 3) (space 0) (safety 0)))
 
+;;; ========================================================================
+(subsection "Low-Level Marker Operations"
+  "These operations are intended for internal use, and do minimal checking.")
+
+
+(declaim (inline fast-mark))
+
+(defun fast-mark (e m)
+  (declare (fixnum m))
+  "Mark element E with marker M.  Do not check arguments."
+  (let ((bit (marker-bit m)))
+    (declare (fixnum bit))
+    ;; If element E is already marked with marker M, do nothing.
+    (when (= 0 (logand bit (bits e)))
+      (if (null (svref *first-marked-element* m))
+	  ;; This is the first element to get marker M, so record E as the
+	  ;; first marked element.
+	  (setf (svref *first-marked-element* m) e)
+	  ;; There arlready are other elements with M, so add E to the chain.
+	  (setf (svref (next-marked-element (svref *last-marked-element* m)) m) e))
+      ;; Adjust forward and back pointers in E.
+      (setf (svref (next-marked-element e) m) nil)
+      (setf (svref (prev-marked-element e) m)
+	    (svref *last-marked-element* m))
+      ;; E is now the last marked element.
+      (setf (svref *last-marked-element* m) e)
+      ;; Turn on the marker bit in E.
+      (setf (bits e)
+	    (logior (bits e) bit))
+      ;; Update the count of elements marked with M.
+      (inc-marker-count m))))
+
+(declaim (inline fast-unmark))
+
+(defun fast-unmark (e m)
+  (declare (fixnum m))
+  "Remove marker M from element E.  Do not check arguments."
+  (let ((bit (marker-bit m)))
+    (declare (fixnum bit))
+    ;; If element E is not marked with marker M, do nothing.
+    (unless (= 0 (logand bit (bits e)))
+      ;; Remember the elements before and after E in marker M's chain.
+      (let ((prev (svref (prev-marked-element e) m))
+            (next (svref (next-marked-element e) m)))
+        ;; Clear the chain entries from E.
+        (setf (svref (prev-marked-element e) m) nil)
+        (setf (svref (next-marked-element e) m) nil)
+        (if (null prev)
+            ;; Element E was the first element in M's chain.
+            ;; Make E's successor first.
+            (setf (svref *first-marked-element* m) next)
+          ;; Else, update next-pointer in previous element.
+          (setf (svref (next-marked-element prev) m) next))
+        (if (null next)
+            ;; Element E was the last element in M's chain.
+            ;; Make E's predecessor the last.
+            (setf (svref *last-marked-element* m) prev)
+          ;; Else, update the prev-pointer in the next element.
+          (setf (svref (prev-marked-element next) m) prev))
+        ;; Turn off the marker bit in E.
+        (setf (bits e)
+              (logand (bits e) (lognot bit)))
+        ;; Update the count of elements marked with M.
+        (dec-marker-count m)))))
+
+(declaim (inline faster-mark))
+
+(defun faster-mark (e m)
+  (declare (fixnum m))
+  "Just like FAST-MARK, but we use this when we're sure that E does not already
+   hold marker M and that there is at least one element already marked with M.
+   This is a common situation and saves a few cycles."
+  ;; Add E to the end of the chain.
+  (setf (svref (next-marked-element (svref *last-marked-element* m)) m) e)
+  ;; Adjust forward and back pointers in E.
+  (setf (svref (next-marked-element e) m) nil)
+  (setf (svref (prev-marked-element e) m)
+        (svref *last-marked-element* m))
+  ;; E is now the last marked element.
+  (setf (svref *last-marked-element* m) e)
+  ;; Turn on the marker bit in E.
+  (setf (bits e)
+        (logior (bits e) (marker-bit m)))
+  ;; Update the count of elements marked with M.
+  (inc-marker-count m))
+
+(declaim (inline faster-unmark))
+
+(defun faster-unmark (e m)
+  (declare (fixnum m))
+  "This is like FAST-UNMARK, but it is used in situations where you are
+   sure that element E has mark M.  Saves a few cycles."
+  (let ((bit (marker-bit m)))
+    (declare (fixnum bit))
+    ;; Remember the elements before and after E in marker M's chain.
+    (let ((prev (svref (prev-marked-element e) m))
+          (next (svref (next-marked-element e) m)))
+      ;; Clear the chain entries from E.
+      (setf (svref (prev-marked-element e) m) nil)
+      (setf (svref (next-marked-element e) m) nil)
+      (if (null prev)
+          ;; Element E was the first element in M's chain.
+          ;; Make E's successor first.
+          (setf (svref *first-marked-element* m) next)
+        ;; Else, update next-pointer in previous element.
+        (setf (svref (next-marked-element prev) m) next))
+      (if (null next)
+          ;; Element E was the last element in M's chain.
+          ;; Make E's predecessor the last.
+          (setf (svref *last-marked-element* m) prev)
+        ;; Else, update the prev-pointer in the next element.
+        (setf (svref (prev-marked-element next) m) prev))
+      ;; Turn off the marker bit in E.
+      (setf (bits e)
+            (logand (bits e) (lognot bit)))
+      ;; Update the count of elements marked with M.
+      (dec-marker-count m))))
+
+(declaim (inline convert-marker))
+
+(defun convert-marker (m1 m2)
+  "For every element marked with M1, mark it with M2 (if it was not marked
+   with M2 already) and clear M1 from E.  This could be done with
+   MARK-BOOLEAN, but this specialized version is faster."
+  (declare (fixnum m1 m2))
+  (let* ((bit1 (marker-bit m1))
+	 (bit2 (marker-bit m2))
+	 (mask1 (lognot bit1))
+	 (bits 0)
+	 (last-m2 (svref *last-marked-element* m2))
+	 (next nil))
+    (declare (fixnum bit1 bit2 mask1 bits))
+    ;; For each element E in the chain for marker M1...
+    (do ((e (svref *first-marked-element* m1) next))
+	((null e))
+      (setq bits (bits e))
+      ;; Mark E with M2, unless it is already marked with M2.
+      (when (= 0 (logand bit2 bits))
+	(if last-m2
+	    ;; There are already elements marked with M2, add E to the
+	    ;; chain.
+	    (setf (svref (next-marked-element last-m2) m2) e)
+	    ;; This is the first element marked with M2.
+	    (setf (svref *first-marked-element* m2) e))
+	;; Adjust the back-pointer in E.
+	(setf (svref (prev-marked-element e) m2) last-m2)
+	;; Turn on the M2 marker bit in E.
+	(setq bits (logior bits bit2))
+	;; Update the count of elements marked with M.
+	(inc-marker-count m2)
+	;; E is now the last element in the m2 chain.
+	(setq last-m2 e))
+      ;; Remove the M1 links from E, but remember the next element.
+      (setq next (svref (next-marked-element e) m1))
+      (setf (svref (next-marked-element e) m1) nil)
+      (setf (svref (prev-marked-element e) m1) nil)
+      ;; Update the marker bits of E.
+      (setf (bits e) (logand bits mask1)))
+    ;; No elements are now marked with M1.
+    (zero-marker-count m1)
+    (setf (svref *first-marked-element* m1) nil)
+    (setf (svref *last-marked-element* m1) nil)
+    ;; Record the last element marked with M2.
+    (setf (svref *last-marked-element* m2) last-m2)
+    (fast-marker-count m2)))
+
+(defun clear-marker (m)
+  "Clear marker M from all elements."
+  (declare (fixnum m))
+  (check-legal-marker m)
+  (let ((mask (lognot (marker-bit m))))
+    (declare (fixnum mask))
+    (do ((e (svref *first-marked-element* m)))
+	((null e) nil)
+      ;; For each element E in the chain for marker M...
+      (let ((next (svref (next-marked-element e) m)))
+	;; Unlink from the chain.
+	(setf (svref (next-marked-element e) m) nil)
+	(setf (svref (prev-marked-element e) m) nil)
+	;; Clear the marker bit.
+	(setf (bits e) (logand (bits e) mask))
+	(setf e next))))
+  ;; Zero the count and set first and last elements to NIL.
+  (zero-marker-count m)
+  (setf (svref *first-marked-element* m) nil)
+  (setf (svref *last-marked-element* m) nil))
+
+(defun clear-marker-pair (m)
+  "Clear marker M and the associated cancel marker, but do not free it."
+  (declare (fixnum m))
+  (check-legal-marker-pair m)
+  (clear-marker m)
+  (clear-marker (get-cancel-marker m)))
+
+(defun clear-all-markers ()
+  "Clear and free all markers from all elements in the KB."
+  (do ((i 0 (1+ i)))
+      ((>= i n-markers))
+    (declare (fixnum i))
+    (clear-marker i)
+    (free-markers)))
+
+(defun make-mask (markers)
+  "Takes a list of markers.
+   Returns the corresponding mask (a fixnum)."
+  (let ((mask 0))
+    (declare (fixnum mask))
+    (dolist (m markers)
+      (declare (fixnum m))
+      (check-legal-marker m)
+      (setq mask (logior mask (marker-bit m))))
+    mask))
+
+(defun make-cancel-mask (markers)
+  "Takes a list of markers.  Returns the mask corresponding to
+   the cacnel marker for each marker in the list."
+  (let ((mask 0))
+    (declare (fixnum mask))
+    (dolist (m markers)
+      (declare (fixnum m))
+      (check-legal-marker m)
+      (setq mask (logior mask (marker-bit (get-cancel-marker m)))))
+    mask))
+
+;;; ========================================================================
+(subsection "User-Level Marker Operations")
+
+;;; The following marker operations may be called directly by users,
+;;; so they check their arguments for safety.
+
+(defun mark (e m)
+  "User-level MARK function."
+  (check-legal-marker m)
+  (setq e (lookup-element-test e))
+  (fast-mark e m))
+
+(defun unmark (e m)
+  "User-level UNMARK function."
+  (check-legal-marker m)
+  (setq e (lookup-element-test e))
+  (fast-unmark e m))
+
+(defun marker-count (m)
+  (check-legal-marker m)
+  (fast-marker-count m))
+
+(defun marker-on? (e m)
+  "User-level function to determine whether element E has marker M
+   turned on."
+  (check-legal-marker m)
+  (setq e (lookup-element-test e))
+  (fast-marker-on? e m))
+
+(defun marker-off? (e m)
+  "User-level function to determine whether element E has marker M
+   turned off."
+  (check-legal-marker m)
+  (setq e (lookup-element-test e))
+  (fast-marker-off? e m))
 
 ;;; ========================================================================
 (subsection "Is-A Hierarchy Scans")
@@ -4575,7 +4573,7 @@ some conditions.  Examine and fix if necessary.")
 			      (t (b-wire link))))
 	   ;; Check and mark it.
 	   (when (fast-markable-element? target)
-	     (fast-mark target ,m-target)))))))
+	     (fast-mark target m)))))))
 
 (defun mark-rel-internal (rel a m fwd rev mark-link
 			      downscan augment recursion-allowance)
@@ -5962,15 +5960,15 @@ English Names: ~20T~10:D
 (subsection "Predicates")
 
 (to-do
-  "Extend statement-true? to work properly when A and B are role-players
-   in multiple descriptions andmultiple copies of the same descriptions.
-   Extend statement-true? to work for transitive link-chains.  THis machinery
-   can be adapted from mark-rel-internal.")
+  "Maybe replace this with a more efficient version that uses a
+   modified upscan for A and B.  Also, it is useful if this function
+   returns a second value, which is the specific REL we should cancel
+   if we want to cancel this.")
+
 
 (defun statement-true? (a rel b)
   "Predicate to determine if there is a REL relationship between elements A
-   and B.  Uses MARK-REL machinery, so it handles transitivity and relations
-   among the roles in a description, but that can be slow."
+   and B."
   (multiple-value-bind (element tag)
       (lookup-element-test rel)
     (setq rel element)
@@ -5985,38 +5983,6 @@ English Names: ~20T~10:D
     (progn
       (mark-rel rel a m)
       (marker-on? b m))))
-
-(defun get-statement-link (a rel b)
-  "If there is a REL relationship between elements A and B, return one
-   link stating that. Else, return NIL.  The link is useful if you
-   want to cancel this statement.  Does not handle transitive chains,
-   but cancelling this is probably the wrong thing in any case.  Note:
-   Occasionally, there may be more than one such link, so you may want
-   to put this in a loop to cancel them all."
-  (multiple-value-bind (element tag)
-      (lookup-element-test rel)
-    (setq rel element)
-    ;; If the REL argument is an english name with an
-    ;; :INVERSE-RELATION tag, use the relation element but flip the
-    ;; arguments around.
-    (when (eq tag :inverse-relation)
-      (rotatef a b)))
-  ;; Mark the superiors of A and B, and the inferiors of REL.
-  (with-markers (m-a m-rel m-b)
-    (progn
-    (upscan a m-a)
-    (upscan b m-b)
-    (downscan rel m-rel)
-    ;; Now scan all links with A-wire to an M-A marked node,
-    ;; looking for those marked with M-REL and an M-B node
-    ;; on its B-wire.
-    (do-marked (a-element m-a)
-      (dolist (link (incoming-a-wires a-element))
-	(when (and (marker-on? link m-rel)
-		   (marker-on? (b-wire link) m-b))
-	  ;; We have a winner.  Return the link in question.  Else
-	  ;; fall through and return NIL.
-	  (return-from get-statement-link link)))))))
 
 (defun can-x-have-a-y? (x y)
   "Predicate to determine whether element X can have a Y role in the
